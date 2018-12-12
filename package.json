@@ -1,17 +1,17 @@
 {
-  "name": "node-gsm-modem",
+  "name": "node-sms-modem",
   "version": "0.0.0",
-  "description": "NodeJs Gsm modem module",
+  "description": "Send SMS through a serial modem",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sbstjn/typescript-npm-boilerplate.git"
+    "url": "https://github.com/Ni-vek/node-sms-modem.git"
   },
   "bugs": {
-    "url": "https://github.com/sbstjn/typescript-npm-boilerplate/issues"
+    "url": "https://github.com/Ni-vek/node-sms-modem/issues"
   },
-  "homepage": "https://github.com/sbstjn/typescript-npm-boilerplate",
+  "homepage": "https://github.com/Ni-vek/node-sms-modem",
   "scripts": {
     "test": "jest --watch",
     "test:cover": "jest --coverage",
@@ -26,7 +26,7 @@
     "boilerplate",
     "library"
   ],
-  "author": "Sebastian Müller <mail@sbstjn.com>",
+  "author": "Kevin BALINI <kevin.balini@gmail.com>",
   "license": "MIT",
   "devDependencies": {
     "@types/eslint": "^4.16.5",
