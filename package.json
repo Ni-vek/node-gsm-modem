@@ -1,6 +1,6 @@
 {
   "name": "node-sms-modem",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Send SMS through a serial modem",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
