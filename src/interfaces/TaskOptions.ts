@@ -1,8 +1,8 @@
 export default interface TaskOptions {
-    accept: (message?: string) => boolean,
+    accept?: (value?: {} | PromiseLike<{}> | undefined) => void,
     finished: boolean,
-    promise: Promise<string>,
-    reject: (message: string) => Error,
+    promise: Promise<{}>,
+    reject?: (message?: any) => void,
     task: string,
-    options: {expectedReturn: string}
+    options: {expectedReturn: RegExp, postProcessFunction?: (data: string[]) => any}
 }

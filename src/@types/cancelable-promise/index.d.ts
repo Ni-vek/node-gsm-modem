@@ -1,5 +1,5 @@
 declare module 'cancelable-promise' {
-    export class CancelablePromise {
+    export default class CancelablePromise {
         public static all(iterable: Iterable<any>): CancelablePromise
 
         public static race(iterable: Iterable<any>): CancelablePromise

@@ -1,7 +1,7 @@
 defaults: &defaults
   working_directory: ~/repo
   docker:
-    - image: circleci/node:8.0
+    - image: circleci/node:10.0
 
 whitelist: &whitelist
   paths:
@@ -102,11 +102,11 @@ jobs:
       - attach_workspace:
           at: ~/repo
 
-      - run: 
+      - run:
           name: Write NPM Token to ~/.npmrc
           command: echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
 
-      - run: 
+      - run:
           name: Install dot-json package
           command: npm install dot-json
 

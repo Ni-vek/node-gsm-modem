@@ -1,8 +1,8 @@
-import GsmModem from '../src/main'
+import SmsModem from '../src/main'
 
 describe('Constructor', () => {
   it('sets port value', () => {
-    const l = new GsmModem('bar')
+    const l = new SmsModem('bar')
 
     expect(l.port).toBe('bar')
   })

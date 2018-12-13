@@ -1,4 +1,4 @@
-import {CancelablePromise} from 'cancelable-promise'
+import CancelablePromise from 'cancelable-promise'
 
 export default class Sleep {
 
