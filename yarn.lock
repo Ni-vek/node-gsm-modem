@@ -25,6 +25,7 @@
 "@serialport/binding-mock@^2.0.2":
   version "2.0.2"
   resolved "https://registry.yarnpkg.com/@serialport/binding-mock/-/binding-mock-2.0.2.tgz#d80ee318561e673c611b9a40ef356acdb9554c90"
+  integrity sha512-IGiGhUXDgid1qB+9NjacMg0CbRauC5XvXXFQxYabcE7KXFNnKhLcssNBsfAqHgBaL3wWIE3Ko6VVWpzNIaNQkw==
   dependencies:
     "@serialport/binding-abstract" "^2.0.2"
     debug "^4.1.0"

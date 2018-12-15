@@ -1,5 +1,6 @@
 export default interface TaskOptions {
     accept?: (value?: {} | PromiseLike<{}> | undefined) => void,
+    canBeFinished: boolean,
     finished: boolean,
     promise: Promise<{}>,
     reject?: (message?: any) => void,

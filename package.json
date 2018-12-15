@@ -1,6 +1,6 @@
 {
   "name": "node-sms-modem",
-  "version": "0.0.2",
+  "version": "0.0.6",
   "description": "Send SMS through a serial modem",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
@@ -29,6 +29,7 @@
   "author": "Kevin BALINI <kevin.balini@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@serialport/binding-mock": "^2.0.2",
     "@types/eslint": "^4.16.5",
     "@types/jest": "^23.3.10",
     "@types/node": "^8.0.19",

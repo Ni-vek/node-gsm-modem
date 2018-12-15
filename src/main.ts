@@ -1,38 +1,31 @@
 import debug = require('debug')
-import SerialPort = require('serialport')
 import {EventEmitter} from 'events'
+import SerialPort = require('serialport')
 import Options from './interfaces/Options'
 import TaskOptions from './interfaces/TaskOptions'
 import Sleep from './lib/Sleep'
+
+type MixedOptions = Options & SerialPort.OpenOptions
 
 class SmsModem extends EventEmitter {
 
     public smsStack: TaskOptions[]
     public serialPort: SerialPort
     private processingQueue: boolean
+    private readonly SerialPortLib: any
     private readonly debug: any
     private readonly port: string
     private readonly options: Options
     private readonly serialPortOptions: SerialPort.OpenOptions
 
-    constructor(port: string, options?: {
-        retry?: number,
-        timeout?: number,
-        dataBits?: number,
-        stopBits?: number,
-        baudRate?: number,
-        parity?: string,
-        autoOpen?: boolean,
-        rtscts?: boolean,
-        smsQueueWaitTime?: number
-    }) {
+    constructor(port: string, options?: MixedOptions, customSerialPort?: any) {
         super()
         this.debug = debug('node-sms-modem')
         this.processingQueue = false
         this.port = port
         this.options = {
             retry: 0,
-            smsQueueWaitTime: 5000,
+            smsQueueWaitTime: 100,
             timeout: 15000
         }
         this.serialPortOptions = {
@@ -47,25 +40,44 @@ class SmsModem extends EventEmitter {
         if (!options) {
             options = {}
         }
+        if (customSerialPort) {
+            this.SerialPortLib = customSerialPort
+        } else {
+            this.SerialPortLib = SerialPort
+        }
         for (const key in options) {
             if (options.hasOwnProperty(key)) {
                 this.options[key] = options[key]
                 this.serialPortOptions[key] = options[key]
             }
         }
-        this.serialPort = new SerialPort(this.port, this.serialPortOptions, () => {
-            this.debug(`Serial port opened with options ${JSON.stringify(this.serialPortOptions)}`)
-            this.emit('open')
-            this.serialPort.on('error', (err) => {
-                this.debug(`Serial port error ${err.message}`)
-            })
-            this.serialPort.on('data', (data: string) => {
-                if (!this.processingQueue) {
-                    this.debug(`Data from serial port ${data}`)
-                    this.dispatchData(data)
+        this.serialPort = new this.SerialPortLib(this.port, this.serialPortOptions, (err: any) => {
+            if (err) {
+                this.debug(`Serial port open error ${err.message}`)
+                this.emit('error', err)
+            } else {
+                this.debug(`Serial port opened with options ${JSON.stringify(this.serialPortOptions)}`)
+                this.emit('open')
+                if (this.options.pinCode) {
+                    this.setPinCode(this.options.pinCode).then(() => {
+                        this.debug('Pin code OK')
+                        this.emit('pin ok')
+                    })
                 }
-            })
-            this.processQueue(this.getStack())
+                this.serialPort.on('error', (error) => {
+                    this.debug(`Serial port error ${error.message}`)
+                    this.emit('error', err)
+                })
+                this.serialPort.on('data', (data: string) => {
+                    this.dispatchData(data)
+                })
+                this.on('task_created', () => {
+                    if (!this.processingQueue) {
+                        this.processingQueue = true
+                        this.processQueue(this.getStack())
+                    }
+                })
+            }
         })
         this.smsStack = []
     }
@@ -73,37 +85,138 @@ class SmsModem extends EventEmitter {
     // Real life commands
     public async sendSms(smsInfo: { receiver: string, text: string, mode?: number }) {
         return Promise.all([
-            this.reset(),
+            this.activateStatusReport(),
             this.setSmsMode(smsInfo.mode || 1),
             this.setReceiver(smsInfo.receiver),
             this.setTextMessage(smsInfo.text)
         ])
     }
 
+    public async activateErrorsCodes() {
+        return this.createTask(`AT+CMEE=1`, {expectedReturn: /OK/})
+    }
+
+    public activateStatusReport() {
+        return this.createTask(`AT+CSMP=33,,0,0`, {expectedReturn: /OK/})
+    }
+
+    public async customCommand(cmd: string, options: {
+        expectedReturn: RegExp,
+        postProcessFunction?: (data: string[]) => any
+    }) {
+        return this.createTask(cmd, options)
+    }
+
+    public async setPinCode(pin: string | number) {
+        return this.createTask(`AT+CPIN=${pin}`, {expectedReturn: /OK/})
+            .then(() => this.checkPinCode())
+    }
+
+    public async checkPinCode() {
+        return this.createTask(`AT+CPIN?`, {
+            expectedReturn: /\+CPIN:/,
+            postProcessFunction: (data: string[]) => {
+                const result: { error: string|undefined, result: boolean } = {
+                    error: undefined,
+                    result: false
+                }
+                for (const line of data) {
+                    if (line) {
+                        if (/READY/.test(line)) {
+                            result.result = true
+                        } else if (/PIN/.test(line)) {
+                            result.result = false
+                            result.error = 'Wrong PIN provided'
+                        } else if (/PUK/.test(line)) {
+                            result.result = false
+                            result.error = 'PUK code wanted'
+                        }
+                    }
+                }
+                return result
+            }
+        })
+    }
+
+    public async unlockSimPin(pin: string|number) {
+        return this.createTask(`AT+CLCK="SC",0,${pin}`, {expectedReturn: /OK/})
+    }
+
+    public async lockSimPin(pin: string|number) {
+        return this.createTask(`AT+CLCK="SC",1,${pin}`, {expectedReturn: /OK/})
+    }
+
+    public async changePin(oldPin: string|number, newPin: string|number) {
+        return this.createTask(`AT+CPWD="SC",${oldPin},${newPin}`, {expectedReturn: /OK/})
+            .then(() => this.setPinCode(newPin))
+    }
+
+    public async checkGsmNetwork() {
+        return this.createTask(`AT+CREG?`, {
+            expectedReturn: /\+CREG:/,
+            postProcessFunction: (data: string[]) => {
+                const result: { error: string|undefined, result: boolean } = {
+                    error: undefined,
+                    result: false
+                }
+                for (const line of data) {
+                    if (line) {
+                        if (/0,[15]/.test(line)) {
+                            result.result = true
+                        } else if (/PIN/.test(line)) {
+                            result.result = false
+                            result.error = 'Searching for network'
+                        }
+                    }
+                }
+                return result
+            }
+        })
+    }
+
     public async id() {
-        return this.createTask('ATI', {expectedReturn: /OK/})
+        return this.createTask('ATI', {expectedReturn: /.+/})
     }
 
     public async imsi() {
-        return this.createTask('AT+CIMI', {expectedReturn: /OK/})
+        return this.createTask('AT+CIMI', {expectedReturn: /[0-9]+/})
     }
 
     public async model() {
-        return this.createTask('AT+CGMM', {expectedReturn: /OK/})
+        return this.createTask('AT+CGMM', {expectedReturn: /.+/})
     }
 
     public async version() {
         // AT+CGMR
-        return this.createTask('AT+CGMR', {expectedReturn: /OK/})
+        return this.createTask('AT+CGMR', {expectedReturn: /.+/})
     }
 
     public async manufacturer() {
         // AT+CGMI
-        return this.createTask('AT+CGMI', {expectedReturn: /OK/})
+        return this.createTask('AT+CGMI', {expectedReturn: /.+/})
     }
 
     public async clock() {
-        return this.createTask('AT+CCLK?', {expectedReturn: /OK/})
+        return this.createTask('AT+CCLK?', {
+            expectedReturn: /\+CCLK:/,
+            postProcessFunction: (data: string[]) => {
+                const result: { date: string, time: string } = {
+                    date: '',
+                    time: ''
+                }
+                for (const line of data) {
+                    if (line) {
+                        let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
+                        if (res) {
+                            res = res[1].trim().replace(/"/g, '').split(',')
+                            result.date = res[0]
+                            result.time = res[1]
+                        }
+                    }
+                }
+                return result
+            }
+        })
     }
 
     public async signalStrength() {
@@ -118,7 +231,7 @@ class SmsModem extends EventEmitter {
                     if (line) {
                         let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
                         if (res) {
-                            res = res[1].split(',')
+                            res = res[1].trim().replace(/"/g, '').split(',')
                             result.ber = res[1]
                             result.rssi = res[0]
                         }
@@ -127,26 +240,31 @@ class SmsModem extends EventEmitter {
                 return result
             }
         })
-        // return this.test('CSQ').then(() => {
-        // this.get('CSQ').then(res => {
-        //   return res.match(/\+CSQ:\s(.+)/)[1]
-        // })
-        // return this.exec('CSQ')
-        //     .then(res => {
-        //     res = res.match(/\+CSQ:\s*(.+)/)
-        //     res = res[1].split(',')
-        //     return {
-        //         rssi: res[0],
-        //         ber: res[1]
-        //     }
-        // })
-        // })
     }
 
     public async smsCenter() {
-        return this.createTask('AT+CSCA?', {expectedReturn: /OK/})
+        return this.createTask('AT+CSCA?', {
+            expectedReturn: /\+CSCA/,
+            postProcessFunction: (data: string[]) => {
+                const result: { ber: string, rssi: string } = {
+                    ber: '',
+                    rssi: ''
+                }
+                for (const line of data) {
+                    if (line) {
+                        let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
+                        if (res) {
+                            res = res[1].trim().replace(/"/g, '').split(',')
+                            result.ber = res[1]
+                            result.rssi = res[0]
+                        }
+                    }
+                }
+                return result
+            }
+        })
     }
-
+    // TODO wait for serial port to send OK after the SMS list
     public async smsList() {
         return this.createTask('AT+CMGL', {expectedReturn: /OK/})
     }
@@ -181,12 +299,25 @@ class SmsModem extends EventEmitter {
         })
     }
 
+    public async saveConfiguration() {
+        return this.createTask('AT&W', { expectedReturn: /OK/})
+    }
+
+    public async currentConfiguration() {
+        return this.createTask('AT&V', { expectedReturn: /ACTIVE PROFILE/})
+    }
+
     public async deleteSms(index: number) {
         return this.createTask(`AT+CMGD=${index}`, {expectedReturn: /OK/})
     }
 
+    public async deleteAllSms() {
+        return this.createTask(`AT+CMGD=1,4`, {expectedReturn: /OK/})
+    }
+
     public async setSmsReceivedListener() {
         return this.createTask(`AT+CNMI=2,1,0,2,0`, {expectedReturn: /OK/})
+            .then(() => this.saveConfiguration())
     }
 
     public async dial(phone: number) {
@@ -205,9 +336,9 @@ class SmsModem extends EventEmitter {
         return this.createTask(text + '\u001a', {expectedReturn: /\+CMGS/})
     }
 
-    private async reset() {
-        return this.createTask('ATZ', {expectedReturn: /OK/})
-    }
+    // private async reset() {
+    //     return this.createTask('ATZ', {expectedReturn: /OK/})
+    // }
 
     private async setSmsMode(mode: number) {
         return this.createTask(`AT+CMGF=${mode}`, {expectedReturn: /OK/})
@@ -235,6 +366,7 @@ class SmsModem extends EventEmitter {
         const self = this
         if (nextTask) {
             this.processingQueue = true
+            // this.serialPort.on('readable', waitingForReadable)
             this.serialPort.on('data', parseResponse)
             this.debug(`Writing to serial port ${nextTask.task}`)
             this.serialPort.write(nextTask.task + '\r', (writeErr: string) => {
@@ -259,15 +391,22 @@ class SmsModem extends EventEmitter {
             })
         } else {
             this.processingQueue = false
-            //     this.debug(`No task to do. Waiting for ${this.options.smsQueueWaitTime}ms`)
-            //     this.launchNextTask(iterator, this.options.smsQueueWaitTime)
+            // this.debug(`No task to do. Waiting for ${this.options.smsQueueWaitTime}ms`)
+            // this.launchNextTask(iterator, this.options.smsQueueWaitTime || 500)
         }
 
+        // function waitingForReadable() {
+        //     console.log('Readable event received')
+        //     if (nextTask) {
+        //         nextTask.canBeFinished = true
+        //     }
+        // }
+
         function parseResponse(data: string) {
-            self.debug(`Parsing response ${data}`)
             const buffer = Buffer.from(data).toString()
             if (buffer) {
                 if (nextTask) {
+                    self.debug(`Parsing response for command ${nextTask.task} - ${data}`)
                     if (/ERROR/.test(buffer) || !nextTask.options.expectedReturn.test(buffer)) {
                         self.rejectTask(nextTask, buffer, iterator)
                     } else {
@@ -317,42 +456,19 @@ class SmsModem extends EventEmitter {
     }
 
     private dispatchData(data: string) {
+        this.debug(`Data from serial port ${data}`)
         const buffer = Buffer.from(data).toString()
         if (buffer) {
             const split = buffer.split('\r\n')
             for (const parsed of split) {
                 // New SMS
                 if (/\+CMTI/.test(parsed)) {
-                    console.log(parsed)
                     const messageInfo = this.parseResponse(parsed)
-                    console.log(messageInfo)
                     this.readSms(parseInt(messageInfo[1], 10)).then((message: any) => {
-                        console.log(message)
-                        this.sendSms({
-                            receiver: message.sender,
-                            text: '73 rules!!! <3'
-                        })
+                        this.emit('new_sms', message)
                     })
-                    // const memory = messageInfo[0]
-                    // this.set('CPMS', memory)
-                    //   .then((memory_usage) => {
-                    //     memory_usage = this.parseResponse(memory_usage)
-                    //     const used = parseInt(memory_usage[0])
-                    //     const total = parseInt(memory_usage[1])
-                    //
-                    //     if (used === total) this.emit('memory full', memory)
-                    //   })
-                    //
-                    // this.set('CMGR', messageInfo[1])
-                    //     .then((cmgr) => {
-                    //         const lines = cmgr.trim()
-                    //             .split('\n')
-                    //
-                    //         console.log(lines)
-                    //         // const message = this.processReceivedPdu(lines[1], message_info[1])
-                    //         // if(message)
-                    //         // this.emit('sms received', message)
-                    //     })
+                } else {
+                    this.emit('something_received', split)
                 }
             }
         }
@@ -389,10 +505,7 @@ class SmsModem extends EventEmitter {
         })
         this.smsStack.push(taskOptions)
         this.debug(`Task ${task} created`)
-        if (!this.processingQueue) {
-            this.processingQueue = true
-            this.launchNextTask(this.getStack(), 100)
-        }
+        this.emit('task_created')
         return taskOptions.promise
     }
 }
