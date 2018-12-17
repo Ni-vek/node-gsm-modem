@@ -1,13 +1,15 @@
 import debug = require('debug')
 import {EventEmitter} from 'events'
+import pdu = require('pdu')
 import SerialPort = require('serialport')
 import Options from './interfaces/Options'
 import TaskOptions from './interfaces/TaskOptions'
+import { GsmErrors } from './lib/GsmErrors'
 import Sleep from './lib/Sleep'
 
 type MixedOptions = Options & SerialPort.OpenOptions
 
-class SmsModem extends EventEmitter {
+export default class SmsModem extends EventEmitter {
 
     public smsStack: TaskOptions[]
     public serialPort: SerialPort
@@ -85,19 +87,18 @@ class SmsModem extends EventEmitter {
     // Real life commands
     public async sendSms(smsInfo: { receiver: string, text: string, mode?: number }) {
         return Promise.all([
-            this.activateStatusReport(),
             this.setSmsMode(smsInfo.mode || 1),
             this.setReceiver(smsInfo.receiver),
             this.setTextMessage(smsInfo.text)
         ])
     }
 
-    public async activateErrorsCodes() {
-        return this.createTask(`AT+CMEE=1`, {expectedReturn: /OK/})
+    public async activateErrorsCodes(customReturn?: RegExp) {
+        return this.createTask(`AT+CMEE=1`, {expectedReturn: customReturn || /OK/})
     }
 
-    public activateStatusReport() {
-        return this.createTask(`AT+CSMP=33,,0,0`, {expectedReturn: /OK/})
+    public activateStatusReport(customReturn?: RegExp) {
+        return this.createTask(`AT+CSMP=33,,0,0`, {expectedReturn: customReturn || /OK/})
     }
 
     public async customCommand(cmd: string, options: {
@@ -107,114 +108,119 @@ class SmsModem extends EventEmitter {
         return this.createTask(cmd, options)
     }
 
-    public async setPinCode(pin: string | number) {
-        return this.createTask(`AT+CPIN=${pin}`, {expectedReturn: /OK/})
-            .then(() => this.checkPinCode())
+    public async setPinCode(pin: string | number, customReturn?: RegExp) {
+        return this.createTask(`AT+CPIN=${pin}`, {expectedReturn: customReturn || /OK/})
     }
 
     public async checkPinCode() {
         return this.createTask(`AT+CPIN?`, {
             expectedReturn: /\+CPIN:/,
-            postProcessFunction: (data: string[]) => {
-                const result: { error: string|undefined, result: boolean } = {
-                    error: undefined,
-                    result: false
-                }
-                for (const line of data) {
-                    if (line) {
-                        if (/READY/.test(line)) {
-                            result.result = true
-                        } else if (/PIN/.test(line)) {
-                            result.result = false
-                            result.error = 'Wrong PIN provided'
-                        } else if (/PUK/.test(line)) {
-                            result.result = false
-                            result.error = 'PUK code wanted'
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise ((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string } = {
+                        data: dataParsed,
+                        message: undefined
+                    }
+                    for (const line of dataParsed) {
+                        if (line) {
+                            if (/READY/.test(line)) {
+                                resolve(result)
+                            } else if (/PIN/.test(line)) {
+                                result.message = 'Wrong PIN provided'
+                                reject(result)
+                            } else if (/PUK/.test(line)) {
+                                result.message = 'PUK code wanted'
+                                reject(result)
+                            }
                         }
                     }
-                }
-                return result
+                })
             }
         })
     }
 
-    public async unlockSimPin(pin: string|number) {
-        return this.createTask(`AT+CLCK="SC",0,${pin}`, {expectedReturn: /OK/})
+    public async unlockSimPin(pin: string|number, customReturn?: RegExp) {
+        return this.createTask(`AT+CLCK="SC",0,${pin}`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async lockSimPin(pin: string|number) {
-        return this.createTask(`AT+CLCK="SC",1,${pin}`, {expectedReturn: /OK/})
+    public async lockSimPin(pin: string|number, customReturn?: RegExp) {
+        return this.createTask(`AT+CLCK="SC",1,${pin}`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async changePin(oldPin: string|number, newPin: string|number) {
-        return this.createTask(`AT+CPWD="SC",${oldPin},${newPin}`, {expectedReturn: /OK/})
-            .then(() => this.setPinCode(newPin))
+    // You should run a setPinCode command after
+    public async changePin(oldPin: string|number, newPin: string|number, customReturn?: RegExp) {
+        return this.createTask(`AT+CPWD="SC",${oldPin},${newPin}`, {expectedReturn: customReturn || /OK/})
     }
 
     public async checkGsmNetwork() {
         return this.createTask(`AT+CREG?`, {
             expectedReturn: /\+CREG:/,
-            postProcessFunction: (data: string[]) => {
-                const result: { error: string|undefined, result: boolean } = {
-                    error: undefined,
-                    result: false
-                }
-                for (const line of data) {
-                    if (line) {
-                        if (/0,[15]/.test(line)) {
-                            result.result = true
-                        } else if (/PIN/.test(line)) {
-                            result.result = false
-                            result.error = 'Searching for network'
+            postProcessFunction: async (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string } = {
+                        data: dataParsed,
+                        message: undefined
+                    }
+                    for (const line of dataParsed) {
+                        if (line) {
+                            if (/0,[15]/.test(line)) {
+                                resolve(result)
+                            } else {
+                                result.message = 'Searching for network'
+                                reject(result)
+                            }
                         }
                     }
-                }
-                return result
+                })
             }
         })
     }
 
-    public async id() {
-        return this.createTask('ATI', {expectedReturn: /.+/})
+    public async id(customReturn?: RegExp) {
+        return this.createTask('ATI', {expectedReturn: customReturn || /.+/})
     }
 
-    public async imsi() {
-        return this.createTask('AT+CIMI', {expectedReturn: /[0-9]+/})
+    public async imsi(customReturn?: RegExp) {
+        return this.createTask('AT+CIMI', {expectedReturn: customReturn || /[0-9]+/})
     }
 
-    public async model() {
-        return this.createTask('AT+CGMM', {expectedReturn: /.+/})
+    public async model(customReturn?: RegExp) {
+        return this.createTask('AT+CGMM', {expectedReturn: customReturn || /.+/})
     }
 
-    public async version() {
-        // AT+CGMR
-        return this.createTask('AT+CGMR', {expectedReturn: /.+/})
+    public async version(customReturn?: RegExp) {
+        return this.createTask('AT+CGMR', {expectedReturn: customReturn || /.+/})
     }
 
-    public async manufacturer() {
-        // AT+CGMI
-        return this.createTask('AT+CGMI', {expectedReturn: /.+/})
+    public async manufacturer(customReturn?: RegExp) {
+        return this.createTask('AT+CGMI', {expectedReturn: customReturn || /.+/})
     }
 
     public async clock() {
         return this.createTask('AT+CCLK?', {
             expectedReturn: /\+CCLK:/,
-            postProcessFunction: (data: string[]) => {
-                const result: { date: string, time: string } = {
-                    date: '',
-                    time: ''
-                }
-                for (const line of data) {
-                    if (line) {
-                        let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
-                        if (res) {
-                            res = res[1].trim().replace(/"/g, '').split(',')
-                            result.date = res[0]
-                            result.time = res[1]
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string, transformedData: {date?: string, time?: string}} = {
+                        data: dataParsed,
+                        message: undefined,
+                        transformedData: {
+                            date: undefined,
+                            time: undefined
                         }
                     }
-                }
-                return result
+                    for (const line of dataParsed) {
+                        if (line) {
+                            let res: RegExpMatchArray | null = line.match(/\+CCLK:\s*(.+)/)
+                            if (res) {
+                                res = res[1].trim().replace(/"/g, '').split(',')
+                                result.transformedData.date = res[0]
+                                result.transformedData.time = res[1]
+                                resolve(result)
+                            }
+                        }
+                    }
+                })
             }
         })
     }
@@ -222,22 +228,28 @@ class SmsModem extends EventEmitter {
     public async signalStrength() {
         return this.createTask('AT+CSQ', {
             expectedReturn: /\+CSQ:/,
-            postProcessFunction: (data: string[]) => {
-                const result: { ber: string, rssi: string } = {
-                    ber: '',
-                    rssi: ''
-                }
-                for (const line of data) {
-                    if (line) {
-                        let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
-                        if (res) {
-                            res = res[1].trim().replace(/"/g, '').split(',')
-                            result.ber = res[1]
-                            result.rssi = res[0]
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string, transformedData: {ber?: string, rssi?: string} } = {
+                        data: dataParsed,
+                        message: undefined,
+                        transformedData: {
+                            ber: undefined,
+                            rssi: undefined
                         }
                     }
-                }
-                return result
+                    for (const line of dataParsed) {
+                        if (line) {
+                            let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
+                            if (res) {
+                                res = res[1].trim().replace(/"/g, '').split(',')
+                                result.transformedData.ber = res[1]
+                                result.transformedData.rssi = res[0]
+                                resolve(result)
+                            }
+                        }
+                    }
+                })
             }
         })
     }
@@ -245,103 +257,154 @@ class SmsModem extends EventEmitter {
     public async smsCenter() {
         return this.createTask('AT+CSCA?', {
             expectedReturn: /\+CSCA/,
-            postProcessFunction: (data: string[]) => {
-                const result: { ber: string, rssi: string } = {
-                    ber: '',
-                    rssi: ''
-                }
-                for (const line of data) {
-                    if (line) {
-                        let res: RegExpMatchArray | null = line.match(/\+CSQ:\s*(.+)/)
-                        if (res) {
-                            res = res[1].trim().replace(/"/g, '').split(',')
-                            result.ber = res[1]
-                            result.rssi = res[0]
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string, transformedData: {number?: string} } = {
+                        data: dataParsed,
+                        message: undefined,
+                        transformedData: {
+                            number: undefined
                         }
                     }
-                }
-                return result
+                    for (const line of dataParsed) {
+                        if (line) {
+                            const res: RegExpMatchArray | null = line.match(/\+CSCA:\s*(.+),/)
+                            if (res) {
+                                result.transformedData.number = res[1].trim().replace(/"/g, '').toString()
+                                resolve(result)
+                            }
+                        }
+                    }
+                })
             }
         })
     }
     // TODO wait for serial port to send OK after the SMS list
     public async smsList() {
-        return this.createTask('AT+CMGL', {expectedReturn: /OK/})
+        return this.createTask('AT+CMGL="ALL"', {
+            expectedReturn: /OK/,
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string, transformedData: {messages: object[]}} = {
+                        data: dataParsed,
+                        message: undefined,
+                        transformedData: {
+                            messages: []
+                        }
+                    }
+                    let newMessage: {date: string, id: string, sender: string, text: string, time: string} = {
+                        date: '',
+                        id: '',
+                        sender: '',
+                        text: '',
+                        time: ''
+                    }
+                    for (const line of dataParsed) {
+                        if (line) {
+                            if (/\+CMGL:/.test(line)) {
+                                newMessage = {
+                                    date: '',
+                                    id: '',
+                                    sender: '',
+                                    text: '',
+                                    time: ''
+                                }
+                                const sections = line.trim().replace(/"/g, '').split(',')
+                                if (sections.length >= 5) {
+                                    newMessage.id = sections[0]
+                                    newMessage.sender = sections[2]
+                                    newMessage.date = sections[3]
+                                    newMessage.time = sections[4]
+                                }
+                            } else {
+                                try {
+                                    newMessage.text = pdu.parse(line)
+                                } catch (e) {
+                                    newMessage.text = line
+                                }
+                                result.transformedData.messages.push(newMessage)
+                            }
+                        }
+                    }
+                    resolve(result)
+                })
+            }
+        })
     }
 
     public async readSms(index: number): Promise<{}> {
         return this.createTask(`AT+CMGR=${index}`, {
             expectedReturn: /\+CMGR:/,
-            postProcessFunction: (data: string) => {
-                const result: { date: string, sender: string, text: string, time: string } = {
-                    date: '',
-                    sender: '',
-                    text: '',
-                    time: ''
-                }
-                for (const line of data) {
-                    if (line) {
-                        if (/\+CMGR:/.test(line)) {
-                            const sections = line.trim().replace(/"/g, '').split(',')
-                            if (sections.length >= 5) {
-                                result.sender = sections[1]
-                                result.date = sections[3]
-                                result.time = sections[4]
-                            }
-                        } else {
-                            result.text = line
+            postProcessFunction: (dataParsed: string[]) => {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[]|{}, message?: string, transformedData: {date?: string, sender?: string, text?: string, time?: string}} = {
+                        data: dataParsed,
+                        message: undefined,
+                        transformedData: {
+                            date: undefined,
+                            sender: undefined,
+                            text: undefined,
+                            time: undefined
                         }
                     }
-                }
-                this.emit('sms received', result)
-                return result
+                    for (const line of dataParsed) {
+                        if (line) {
+                            if (/\+CMGR:/.test(line)) {
+                                const sections = line.trim().replace(/"/g, '').split(',')
+                                if (sections.length >= 5) {
+                                    result.transformedData.sender = sections[1]
+                                    result.transformedData.date = sections[3]
+                                    result.transformedData.time = sections[4]
+                                }
+                            } else {
+                                try {
+                                    result.transformedData.text = pdu.parse(line)
+                                } catch (e) {
+                                    result.transformedData.text = line
+                                }
+                            }
+                        }
+                    }
+                    resolve(result)
+                })
             }
         })
     }
 
-    public async saveConfiguration() {
-        return this.createTask('AT&W', { expectedReturn: /OK/})
+    public async saveConfiguration(customReturn?: RegExp) {
+        return this.createTask('AT&W', { expectedReturn: customReturn || /OK/})
     }
 
-    public async currentConfiguration() {
-        return this.createTask('AT&V', { expectedReturn: /ACTIVE PROFILE/})
+    public async currentConfiguration(customReturn?: RegExp) {
+        return this.createTask('AT&V', { expectedReturn: customReturn || /ACTIVE PROFILE/})
     }
 
-    public async deleteSms(index: number) {
-        return this.createTask(`AT+CMGD=${index}`, {expectedReturn: /OK/})
+    public async deleteSms(index: number, customReturn?: RegExp) {
+        return this.createTask(`AT+CMGD=${index}`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async deleteAllSms() {
-        return this.createTask(`AT+CMGD=1,4`, {expectedReturn: /OK/})
+    public async deleteAllSms(customReturn?: RegExp) {
+        return this.createTask(`AT+CMGD=1,4`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async setSmsReceivedListener() {
-        return this.createTask(`AT+CNMI=2,1,0,2,0`, {expectedReturn: /OK/})
-            .then(() => this.saveConfiguration())
+    public async setSmsReceivedListener(customReturn?: RegExp) {
+        return this.createTask(`AT+CNMI=2,1,0,2,0`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async dial(phone: number) {
-        return this.createTask(`AT+ATD${phone}`)
+    public async setReceiver(receiver: string, customReturn?: RegExp) {
+        return this.createTask(`AT+CMGS="${receiver}"`, {expectedReturn: customReturn || />/})
     }
 
-    public async hangup() {
-        return this.createTask('AT+ATH')
+    public async setTextMessage(text: string, customReturn?: RegExp) {
+        return this.createTask(text + '\u001a', {expectedReturn: customReturn || /\+CMGS/})
     }
 
-    private async setReceiver(receiver: string) {
-        return this.createTask(`AT+CMGS="${receiver}"`, {expectedReturn: />/})
+    public async resetModem(customReturn?: RegExp) {
+        return this.createTask('ATZ', {expectedReturn: customReturn || /OK/})
     }
 
-    private async setTextMessage(text: string) {
-        return this.createTask(text + '\u001a', {expectedReturn: /\+CMGS/})
-    }
-
-    // private async reset() {
-    //     return this.createTask('ATZ', {expectedReturn: /OK/})
-    // }
-
-    private async setSmsMode(mode: number) {
-        return this.createTask(`AT+CMGF=${mode}`, {expectedReturn: /OK/})
+    public async setSmsMode(mode: number, customReturn?: RegExp) {
+        return this.createTask(`AT+CMGF=${mode}`, {expectedReturn: customReturn || /OK/})
     }
 
     private* getStack(): IterableIterator<TaskOptions | null> {
@@ -406,18 +469,24 @@ class SmsModem extends EventEmitter {
             const buffer = Buffer.from(data).toString()
             if (buffer) {
                 if (nextTask) {
+                    const parsedBuffer: string[] = buffer.trim().split('\r\n')
                     self.debug(`Parsing response for command ${nextTask.task} - ${data}`)
                     if (/ERROR/.test(buffer) || !nextTask.options.expectedReturn.test(buffer)) {
-                        self.rejectTask(nextTask, buffer, iterator)
+                        self.rejectTask(nextTask, parsedBuffer, iterator)
                     } else {
                         if (nextTask.options.postProcessFunction) {
-                            self.acceptTask(
-                                nextTask,
-                                nextTask.options.postProcessFunction(buffer.split('\r\n')),
-                                iterator
-                            )
+                            nextTask.options.postProcessFunction(parsedBuffer).then((results: {data: string[]|{}, transformedData?: {}}) => {
+                                self.acceptTask(
+                                    nextTask,
+                                    results.data,
+                                    iterator,
+                                    results.transformedData
+                                )
+                            }).catch((err: {data: string[]|{}, message?: string}) => {
+                                self.rejectTask(nextTask, err.data, iterator, err.message)
+                            })
                         } else {
-                            self.acceptTask(nextTask, buffer, iterator)
+                            self.acceptTask(nextTask, parsedBuffer, iterator)
                         }
                     }
                 }
@@ -426,18 +495,35 @@ class SmsModem extends EventEmitter {
         }
     }
 
-    private acceptTask(task: TaskOptions, parsed: string, iterator: IterableIterator<TaskOptions | null>) {
+    private acceptTask(task: TaskOptions, parsed: string[]|{}, iterator: IterableIterator<TaskOptions | null>, transformedData?: {}) {
         if (task.accept) {
-            task.accept(parsed)
+            task.accept({
+                data: parsed,
+                transformedData
+            })
             this.launchNextTask(iterator, 100)
         } else {
             throw new Error(`Cannot accept task ${task.task}`)
         }
     }
 
-    private rejectTask(task: TaskOptions, parsed: string, iterator: IterableIterator<TaskOptions | null>) {
+    private rejectTask(task: TaskOptions, parsed: string[]|{}, iterator: IterableIterator<TaskOptions | null>, message?: string) {
         if (task.reject) {
-            task.reject(`data expected does not match real data received - ${parsed}`)
+            const rejectObject: {code: number|string|undefined, data: string[]|{}, err: string} = {
+                code: undefined,
+                data: parsed,
+                err: message || `Expected data ${task.options.expectedReturn}, does not match real data received ${parsed}, for command ${task.task}`
+            }
+            for (const stringParsed in parsed) {
+                if (parsed.hasOwnProperty(stringParsed)) {
+                    const elements = /\+(CME|CMS).+: ([0-9]+)/.exec(parsed[stringParsed])
+                    if (elements && elements.length) {
+                        rejectObject.code = elements[2]
+                        rejectObject.err = GsmErrors[elements[1]][elements[2]]
+                    }
+                }
+            }
+            task.reject(rejectObject)
             this.launchNextTask(iterator, 100)
         } else {
             throw new Error(`Cannot reject task ${task.task}`)
@@ -474,7 +560,7 @@ class SmsModem extends EventEmitter {
         }
     }
 
-    private async createTask(task: string, options?: {}): Promise<{}> {
+    private async createTask(task: string, options?: {}): Promise<{ code?: number|string|undefined, data: string[]|{}, err?: string, transformedData: {}}> {
         if (!options) {
             options = {}
         }
@@ -484,7 +570,7 @@ class SmsModem extends EventEmitter {
             task
         }
         taskOptions.promise = new Promise((resolve, reject) => {
-            taskOptions.accept = (message?: {}) => {
+            taskOptions.accept = (message?: {data: string[]}) => {
                 this.smsStack.splice(0, 1)
                 if (taskOptions.finished) {
                     throw new Error('Already called')
@@ -493,7 +579,7 @@ class SmsModem extends EventEmitter {
                     resolve(message)
                 }
             }
-            taskOptions.reject = (message: any) => {
+            taskOptions.reject = (message: {code?: number, err: string, data: string[]}) => {
                 this.smsStack.splice(0, 1)
                 if (taskOptions.finished) {
                     throw new Error('Already called')
@@ -509,5 +595,3 @@ class SmsModem extends EventEmitter {
         return taskOptions.promise
     }
 }
-
-export = {SmsModem}

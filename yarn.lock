@@ -2273,6 +2273,11 @@ path-type@^2.0.0:
   dependencies:
     pify "^2.0.0"
 
+pdu@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/pdu/-/pdu-1.1.0.tgz#bee81a4a17b59ddcf2b39c0c16e20917a6939a34"
+  integrity sha1-vugaShe1ndzys5wMFuIJF6aTmjQ=
+
 performance-now@^2.1.0:
   version "2.1.0"
   resolved "https://registry.yarnpkg.com/performance-now/-/performance-now-2.1.0.tgz#6309f4e0e5fa913ec1c69307ae364b4b377c9e7b"

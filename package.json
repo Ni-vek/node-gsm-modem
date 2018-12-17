@@ -1,6 +1,6 @@
 {
   "name": "node-sms-modem",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Send SMS through a serial modem",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",
@@ -59,6 +59,7 @@
     "@types/debug": "^0.0.31",
     "cancelable-promise": "^2.4.1",
     "debug": "^4.1.0",
+    "pdu": "^1.1.0",
     "serialport": "^7.1.0"
   }
 }

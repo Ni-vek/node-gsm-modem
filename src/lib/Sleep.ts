@@ -19,10 +19,9 @@ export default class Sleep {
         return this.sleeps[idJoined]
     }
 
-    public static clear(...id: string[]): void {
-        const idJoined = id.join('_')
-        if (this.sleeps.hasOwnProperty(idJoined)) {
-            this.sleeps[idJoined].cancel()
+    public static clear(id: string, reason?: () => void): void {
+        if (this.sleeps.hasOwnProperty(id)) {
+            this.sleeps[id].cancel(reason || null)
         }
     }
 
@@ -33,5 +32,4 @@ export default class Sleep {
             }
         }
     }
-
 }

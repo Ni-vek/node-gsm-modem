@@ -14,4 +14,40 @@ let modem = new SmsModem('/dev/tty.usbmodem14101', {
 	smsQueueWaitTime: 100
 });
 modem.on('open', () => {
+	// modem.setSmsReceivedListener().then((...listen) => {
+	//     console.log(listen)
+	// })
+	// modem.signalStrength().then((...signal) => {
+	//     console.log('signal', signal);
+	// });
+	// modem.customCommand('AT+CPIN?', { expectedReturn: /OK/, postProcessFunction: (data) => {
+	//     console.log('Post process function', data);
+	//     return data[1]
+	// } }).then((pin) => {
+	//     console.log(pin)
+	// })
+	// setTimeout(() => {
+	// 	modem.sendSms({ receiver: '0614284000', text: 'Re-Salut Baloche'}).then((...args) => {
+	// 		console.log('OK', args);
+	// 	}).catch((...err) => {
+	// 		console.log('Err', err);
+	// 	})
+	// }, 3000)
+	//
+	// setTimeout(() => {
+	// 	modem.sendSms({ receiver: PHONE_NUMBER, text: 'Salut mon petit'}).then((...args) => {
+	// 		console.log('OK', args);
+	// 		modem.signalStrength().then((...listen) => {
+	// 			console.log(listen)
+	// 		})
+	// 	}).catch((...err) => {
+	// 		console.log('Err', err);
+	// 	})
+	// }, 10000)
+	// setTimeout(() => {
+	//
+	// 	modem.setSmsReceivedListener().then((...signal) => {
+	// 		console.log(signal);
+	// 	});
+	// }, 15000)
 });
