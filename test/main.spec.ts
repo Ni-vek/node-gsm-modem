@@ -90,6 +90,78 @@ describe('SmsModem unit tests', () => {
             return cmd
         })
     })
+    describe('Enable echo command tests', () => {
+        test('should resolve the promise as the data return from the serial port matches the default expected data', () => {
+            expect.assertions(1)
+            const cmd = modem.enableEcho().then((data) => {
+                expect(data.data[0]).toMatch(/OK/)
+            })
+            modem.serialPort.binding.emitData('OK')
+            return cmd
+        })
+        test('should reject the promise as the data return from the serial port does not match the default expected data', () => {
+            expect.assertions(2)
+            const cmd = modem.enableEcho().catch((data) => {
+                expect(data.code).toBe('100')
+                expect(data.err).toBe('Unknown error')
+            })
+            modem.serialPort.binding.emitData('+CME ERROR: 100')
+            return cmd
+        })
+        test('should resolve the promise as the data return from the serial port matches the custom expected data', () => {
+            expect.assertions(1)
+            const cmd = modem.enableEcho(/COOL/).then((data) => {
+                expect(data.data[0]).toMatch(/COOL/)
+            })
+            modem.serialPort.binding.emitData('COOL')
+            return cmd
+        })
+        test('should reject the promise as the data return from the serial port does not match the custom expected data', () => {
+            expect.assertions(2)
+            const cmd = modem.enableEcho(/COOL/).catch((data) => {
+                expect(data.code).toBe('100')
+                expect(data.err).toBe('Unknown error')
+            })
+            modem.serialPort.binding.emitData('+CME ERROR: 100')
+            return cmd
+        })
+    })
+    describe('Disable echo command tests', () => {
+        test('should resolve the promise as the data return from the serial port matches the default expected data', () => {
+            expect.assertions(1)
+            const cmd = modem.disableEcho().then((data) => {
+                expect(data.data[0]).toMatch(/OK/)
+            })
+            modem.serialPort.binding.emitData('OK')
+            return cmd
+        })
+        test('should reject the promise as the data return from the serial port does not match the default expected data', () => {
+            expect.assertions(2)
+            const cmd = modem.disableEcho().catch((data) => {
+                expect(data.code).toBe('100')
+                expect(data.err).toBe('Unknown error')
+            })
+            modem.serialPort.binding.emitData('+CME ERROR: 100')
+            return cmd
+        })
+        test('should resolve the promise as the data return from the serial port matches the custom expected data', () => {
+            expect.assertions(1)
+            const cmd = modem.disableEcho(/COOL/).then((data) => {
+                expect(data.data[0]).toMatch(/COOL/)
+            })
+            modem.serialPort.binding.emitData('COOL')
+            return cmd
+        })
+        test('should reject the promise as the data return from the serial port does not match the custom expected data', () => {
+            expect.assertions(2)
+            const cmd = modem.disableEcho(/COOL/).catch((data) => {
+                expect(data.code).toBe('100')
+                expect(data.err).toBe('Unknown error')
+            })
+            modem.serialPort.binding.emitData('+CME ERROR: 100')
+            return cmd
+        })
+    })
     describe('Errors codes resolver', () => {
         test('should handle the correct CME error', () => {
             expect.assertions(2)

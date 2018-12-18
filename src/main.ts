@@ -94,6 +94,14 @@ export default class SmsModem extends EventEmitter {
         ])
     }
 
+    public async enableEcho(customReturn?: RegExp) {
+        return this.createTask(`ATE1`, {expectedReturn: customReturn || /OK/})
+    }
+
+    public async disableEcho(customReturn?: RegExp) {
+        return this.createTask(`ATE0`, {expectedReturn: customReturn || /OK/})
+    }
+
     public async activateErrorsCodes(customReturn?: RegExp) {
         return this.createTask(`AT+CMEE=1`, {expectedReturn: customReturn || /OK/})
     }
