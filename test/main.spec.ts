@@ -15,11 +15,12 @@ describe('SmsModem unit tests', () => {
             dataBits: 8,
             lock: true,
             parity: 'none',
+            removeDeviceEcho: false,
             retry: 0,
             rtscts: true,
             smsQueueWaitTime: 100,
             stopBits: 1,
-            timeout: 15000
+            timeout: 1000
         })
         modem.on('open', done)
     })

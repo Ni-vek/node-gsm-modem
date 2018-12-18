@@ -4,7 +4,7 @@ import pdu = require('pdu')
 import SerialPort = require('serialport')
 import Options from './interfaces/Options'
 import TaskOptions from './interfaces/TaskOptions'
-import { GsmErrors } from './lib/GsmErrors'
+import {GsmErrors} from './lib/GsmErrors'
 import Sleep from './lib/Sleep'
 
 type MixedOptions = Options & SerialPort.OpenOptions
@@ -26,6 +26,7 @@ export default class SmsModem extends EventEmitter {
         this.processingQueue = false
         this.port = port
         this.options = {
+            removeDeviceEcho: false,
             retry: 0,
             smsQueueWaitTime: 100,
             timeout: 15000
@@ -116,8 +117,8 @@ export default class SmsModem extends EventEmitter {
         return this.createTask(`AT+CPIN?`, {
             expectedReturn: /\+CPIN:/,
             postProcessFunction: (dataParsed: string[]) => {
-                return new Promise ((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string } = {
+                return new Promise((resolve, reject) => {
+                    const result: { data: string[] | {}, message?: string } = {
                         data: dataParsed,
                         message: undefined
                     }
@@ -139,16 +140,16 @@ export default class SmsModem extends EventEmitter {
         })
     }
 
-    public async unlockSimPin(pin: string|number, customReturn?: RegExp) {
+    public async unlockSimPin(pin: string | number, customReturn?: RegExp) {
         return this.createTask(`AT+CLCK="SC",0,${pin}`, {expectedReturn: customReturn || /OK/})
     }
 
-    public async lockSimPin(pin: string|number, customReturn?: RegExp) {
+    public async lockSimPin(pin: string | number, customReturn?: RegExp) {
         return this.createTask(`AT+CLCK="SC",1,${pin}`, {expectedReturn: customReturn || /OK/})
     }
 
     // You should run a setPinCode command after
-    public async changePin(oldPin: string|number, newPin: string|number, customReturn?: RegExp) {
+    public async changePin(oldPin: string | number, newPin: string | number, customReturn?: RegExp) {
         return this.createTask(`AT+CPWD="SC",${oldPin},${newPin}`, {expectedReturn: customReturn || /OK/})
     }
 
@@ -157,7 +158,7 @@ export default class SmsModem extends EventEmitter {
             expectedReturn: /\+CREG:/,
             postProcessFunction: async (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string } = {
+                    const result: { data: string[] | {}, message?: string } = {
                         data: dataParsed,
                         message: undefined
                     }
@@ -201,7 +202,7 @@ export default class SmsModem extends EventEmitter {
             expectedReturn: /\+CCLK:/,
             postProcessFunction: (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string, transformedData: {date?: string, time?: string}} = {
+                    const result: { data: string[] | {}, message?: string, transformedData: { date?: string, time?: string } } = {
                         data: dataParsed,
                         message: undefined,
                         transformedData: {
@@ -230,7 +231,7 @@ export default class SmsModem extends EventEmitter {
             expectedReturn: /\+CSQ:/,
             postProcessFunction: (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string, transformedData: {ber?: string, rssi?: string} } = {
+                    const result: { data: string[] | {}, message?: string, transformedData: { ber?: string, rssi?: string } } = {
                         data: dataParsed,
                         message: undefined,
                         transformedData: {
@@ -259,7 +260,7 @@ export default class SmsModem extends EventEmitter {
             expectedReturn: /\+CSCA/,
             postProcessFunction: (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string, transformedData: {number?: string} } = {
+                    const result: { data: string[] | {}, message?: string, transformedData: { number?: string } } = {
                         data: dataParsed,
                         message: undefined,
                         transformedData: {
@@ -279,20 +280,21 @@ export default class SmsModem extends EventEmitter {
             }
         })
     }
+
     // TODO wait for serial port to send OK after the SMS list
     public async smsList() {
         return this.createTask('AT+CMGL="ALL"', {
             expectedReturn: /OK/,
             postProcessFunction: (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string, transformedData: {messages: object[]}} = {
+                    const result: { data: string[] | {}, message?: string, transformedData: { messages: object[] } } = {
                         data: dataParsed,
                         message: undefined,
                         transformedData: {
                             messages: []
                         }
                     }
-                    let newMessage: {date: string, id: string, sender: string, text: string, time: string} = {
+                    let newMessage: { date: string, id: string, sender: string, text: string, time: string } = {
                         date: '',
                         id: '',
                         sender: '',
@@ -337,7 +339,7 @@ export default class SmsModem extends EventEmitter {
             expectedReturn: /\+CMGR:/,
             postProcessFunction: (dataParsed: string[]) => {
                 return new Promise((resolve, reject) => {
-                    const result: { data: string[]|{}, message?: string, transformedData: {date?: string, sender?: string, text?: string, time?: string}} = {
+                    const result: { data: string[] | {}, message?: string, transformedData: { date?: string, sender?: string, text?: string, time?: string } } = {
                         data: dataParsed,
                         message: undefined,
                         transformedData: {
@@ -372,11 +374,11 @@ export default class SmsModem extends EventEmitter {
     }
 
     public async saveConfiguration(customReturn?: RegExp) {
-        return this.createTask('AT&W', { expectedReturn: customReturn || /OK/})
+        return this.createTask('AT&W', {expectedReturn: customReturn || /OK/})
     }
 
     public async currentConfiguration(customReturn?: RegExp) {
-        return this.createTask('AT&V', { expectedReturn: customReturn || /ACTIVE PROFILE/})
+        return this.createTask('AT&V', {expectedReturn: customReturn || /ACTIVE PROFILE/})
     }
 
     public async deleteSms(index: number, customReturn?: RegExp) {
@@ -467,27 +469,25 @@ export default class SmsModem extends EventEmitter {
 
         function parseResponse(data: string) {
             const buffer = Buffer.from(data).toString()
-            if (buffer) {
-                if (nextTask) {
-                    const parsedBuffer: string[] = buffer.trim().split('\r\n')
-                    self.debug(`Parsing response for command ${nextTask.task} - ${data}`)
-                    if (/ERROR/.test(buffer) || !nextTask.options.expectedReturn.test(buffer)) {
-                        self.rejectTask(nextTask, parsedBuffer, iterator)
+            if (buffer && nextTask && (!self.options.removeDeviceEcho || (self.options.removeDeviceEcho && buffer !== nextTask.task))) {
+                const parsedBuffer: string[] = buffer.trim().split('\r\n')
+                self.debug(`Parsing response for command ${nextTask.task} - ${data}`)
+                if (/ERROR/.test(buffer) || !nextTask.options.expectedReturn.test(buffer)) {
+                    self.rejectTask(nextTask, parsedBuffer, iterator)
+                } else {
+                    if (nextTask.options.postProcessFunction) {
+                        nextTask.options.postProcessFunction(parsedBuffer).then((results: { data: string[] | {}, transformedData?: {} }) => {
+                            self.acceptTask(
+                                nextTask,
+                                results.data,
+                                iterator,
+                                results.transformedData
+                            )
+                        }).catch((err: { data: string[] | {}, message?: string }) => {
+                            self.rejectTask(nextTask, err.data, iterator, err.message)
+                        })
                     } else {
-                        if (nextTask.options.postProcessFunction) {
-                            nextTask.options.postProcessFunction(parsedBuffer).then((results: {data: string[]|{}, transformedData?: {}}) => {
-                                self.acceptTask(
-                                    nextTask,
-                                    results.data,
-                                    iterator,
-                                    results.transformedData
-                                )
-                            }).catch((err: {data: string[]|{}, message?: string}) => {
-                                self.rejectTask(nextTask, err.data, iterator, err.message)
-                            })
-                        } else {
-                            self.acceptTask(nextTask, parsedBuffer, iterator)
-                        }
+                        self.acceptTask(nextTask, parsedBuffer, iterator)
                     }
                 }
                 self.serialPort.removeListener('data', parseResponse)
@@ -495,7 +495,7 @@ export default class SmsModem extends EventEmitter {
         }
     }
 
-    private acceptTask(task: TaskOptions, parsed: string[]|{}, iterator: IterableIterator<TaskOptions | null>, transformedData?: {}) {
+    private acceptTask(task: TaskOptions, parsed: string[] | {}, iterator: IterableIterator<TaskOptions | null>, transformedData?: {}) {
         if (task.accept) {
             task.accept({
                 data: parsed,
@@ -507,9 +507,9 @@ export default class SmsModem extends EventEmitter {
         }
     }
 
-    private rejectTask(task: TaskOptions, parsed: string[]|{}, iterator: IterableIterator<TaskOptions | null>, message?: string) {
+    private rejectTask(task: TaskOptions, parsed: string[] | {}, iterator: IterableIterator<TaskOptions | null>, message?: string) {
         if (task.reject) {
-            const rejectObject: {code: number|string|undefined, data: string[]|{}, err: string} = {
+            const rejectObject: { code: number | string | undefined, data: string[] | {}, err: string } = {
                 code: undefined,
                 data: parsed,
                 err: message || `Expected data ${task.options.expectedReturn}, does not match real data received ${parsed}, for command ${task.task}`
@@ -560,7 +560,7 @@ export default class SmsModem extends EventEmitter {
         }
     }
 
-    private async createTask(task: string, options?: {}): Promise<{ code?: number|string|undefined, data: string[]|{}, err?: string, transformedData: {}}> {
+    private async createTask(task: string, options?: {}): Promise<{ code?: number | string | undefined, data: string[] | {}, err?: string, transformedData: {} }> {
         if (!options) {
             options = {}
         }
@@ -570,7 +570,7 @@ export default class SmsModem extends EventEmitter {
             task
         }
         taskOptions.promise = new Promise((resolve, reject) => {
-            taskOptions.accept = (message?: {data: string[]}) => {
+            taskOptions.accept = (message?: { data: string[] }) => {
                 this.smsStack.splice(0, 1)
                 if (taskOptions.finished) {
                     throw new Error('Already called')
@@ -579,7 +579,7 @@ export default class SmsModem extends EventEmitter {
                     resolve(message)
                 }
             }
-            taskOptions.reject = (message: {code?: number, err: string, data: string[]}) => {
+            taskOptions.reject = (message: { code?: number, err: string, data: string[] }) => {
                 this.smsStack.splice(0, 1)
                 if (taskOptions.finished) {
                     throw new Error('Already called')
@@ -589,6 +589,16 @@ export default class SmsModem extends EventEmitter {
                 }
             }
         })
+        if (this.options.timeout) {
+            Sleep.create(this.options.timeout, `${task}_timeout`).then(() => {
+                if (!taskOptions.finished) {
+                    taskOptions.reject({
+                        data: [],
+                        err: `Task ${task} timeout`
+                    })
+                }
+            })
+        }
         this.smsStack.push(taskOptions)
         this.debug(`Task ${task} created`)
         this.emit('task_created')
